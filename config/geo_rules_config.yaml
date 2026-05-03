@@ -1,0 +1,143 @@
+# GEO (Generative Engine Optimization) Content Rules
+# These 7 rules analyze content-level signals for AI search readiness
+# Each rule gets EQUAL weight: 100 ÷ 7 ≈ 14.29 points
+# Total score: 0-100 (sum of all rule scores)
+
+geo_rules:
+  answer_first_content:
+    weight: 14.29
+    description: "Answer-first content in first 200 words"
+    research_basis: "Answer-first content is 33% more likely to be cited by AI systems"
+    evaluation_criteria:
+      - "Clear summary/answer in first 200 words"
+      - "Concise paragraph (50-150 words)"
+      - "Direct answer before detailed explanation"
+    scoring:
+      full_points: "Concise answer in first 200 words"
+      partial_points: "Some introductory content (100+ words)"
+      zero_points: "No clear answer-first content"
+  
+  quotable_chunks:
+    weight: 14.29
+    description: "Quotable/extractable content chunks"
+    research_basis: "Quotable content increases AI visibility by 30%"
+    evaluation_criteria:
+      - "Short paragraphs (2-4 sentences each)"
+      - "Structured lists (ol/ul with 3+ items)"
+      - "Step-by-step formatting"
+      - "Clear section breaks"
+    scoring:
+      full_points: "3+ quotable paragraphs AND 2+ substantial lists"
+      partial_points: "Some quotable paragraphs OR lists"
+      zero_points: "Long paragraphs, no lists"
+  
+  definitional_phrasing:
+    weight: 14.29
+    description: "Definitional sentence patterns"
+    research_basis: "Cited sentences are nearly 2x as likely to define rather than describe"
+    patterns:
+      - "\\b(\\w+)\\s+is\\s+"
+      - "\\b(\\w+)\\s+refers to\\s+"
+      - "\\b(\\w+)\\s+means\\s+"
+      - "\\b(\\w+)\\s+can be defined as\\s+"
+    evaluation_criteria:
+      - "Uses 'X is...' patterns"
+      - "Uses 'X refers to...' patterns"
+      - "Uses 'X means...' patterns"
+      - "Clear definitions near topic introduction"
+    scoring:
+      full_points: "3+ definitional patterns found"
+      partial_points: "1-2 definitional patterns"
+      zero_points: "No definitional phrasing"
+  
+  sourced_statistics:
+    weight: 14.29
+    description: "Specific numerical data and statistics"
+    research_basis: "Adding sourced statistics increases LLM visibility by 30-40%"
+    patterns:
+      - "\\d+%"
+      - "\\d+\\s+(percent|times|fold)"
+      - "\\$\\d+"
+      - "\\d+\\s+(million|billion|thousand)"
+    evaluation_criteria:
+      - "Specific numbers/percentages"
+      - "Cited statistics"
+      - "Data points with context"
+      - "Quantifiable claims"
+    scoring:
+      full_points: "3+ statistics/data points"
+      partial_points: "1-2 statistics"
+      zero_points: "No numerical data"
+  
+  question_format_headings:
+    weight: 14.29
+    description: "Question-format H2/H3 headings"
+    research_basis: "Question headings match how users query AI systems"
+    question_words:
+      - who
+      - what
+      - when
+      - where
+      - why
+      - how
+      - which
+      - can
+      - does
+      - is
+      - are
+      - should
+      - will
+    evaluation_criteria:
+      - "H2/H3 tags starting with question words"
+      - "Who/what/when/where/why/how phrasing"
+      - "Natural language questions"
+      - "Headings ending with '?'"
+    scoring:
+      full_points: "3+ question-format headings"
+      partial_points: "1-2 question headings"
+      zero_points: "No question headings"
+  
+  content_freshness:
+    weight: 14.29
+    description: "Recent content modification signals"
+    research_basis: "AI systems prefer fresh, updated content"
+    evaluation_criteria:
+      - "dateModified in JSON-LD"
+      - "article:modified_time meta tag"
+      - "datePublished as fallback"
+    thresholds:
+      full_points: 180    # days (6 months) - full 14.29 points
+      partial_points: 365 # days (12 months) - half points
+      zero_points: 366    # older than 12 months - 0 points
+    scoring:
+      full_points: "Updated within 6 months"
+      partial_points: "Updated within 12 months"
+      zero_points: "No date found or older than 12 months"
+  
+  faq_content_blocks:
+    weight: 14.29
+    description: "FAQ-style Q&A content"
+    research_basis: "FAQ content is a direct match for AI answer extraction"
+    evaluation_criteria:
+      - "FAQPage schema present (bonus)"
+      - "Q&A patterns in HTML"
+      - "dt/dd structures"
+      - "Accordion/collapsible sections"
+      - "'Q:' or 'A:' prefixes in content"
+    scoring:
+      full_points: "FAQPage schema + FAQ HTML structure"
+      partial_points: "FAQPage schema OR FAQ structure (not both)"
+      zero_points: "No FAQ content or schema"
+
+# Total possible score: 7 rules × 14.29 points ≈ 100 points
+# Each rule can award full, partial, or zero points based on criteria
+
+# Optional: Grade thresholds for display
+grade_thresholds:
+  A: 90
+  B: 80
+  C: 70
+  D: 60
+  F: 0
+
+# Made with Bob

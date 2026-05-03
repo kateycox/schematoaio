@@ -1,0 +1,90 @@
+# Schema Inventory Configuration
+# 19 schema types for diagnostic reporting (NOT scored)
+# Status: 0 (none), 1 (some), 2 (multiple relevant types)
+
+schema_types:
+  # Types with required component checks (11 types)
+  types_with_requirements:
+    Organization:
+      required: [name, url]
+      description: "Organization entity"
+    
+    Article:
+      required: [headline, datePublished, author]
+      description: "Article content"
+    
+    BlogPosting:
+      required: [headline, datePublished, author]
+      description: "Blog post content"
+    
+    NewsArticle:
+      required: [headline, datePublished, author]
+      description: "News article content"
+    
+    FAQPage:
+      required: [mainEntity]
+      description: "FAQ page with Q&A pairs"
+      nested_validation:
+        mainEntity:
+          type: Question
+          required: [acceptedAnswer]
+    
+    BreadcrumbList:
+      required: [itemListElement]
+      description: "Breadcrumb navigation"
+      nested_validation:
+        itemListElement:
+          required: [position, name, item]
+    
+    Person:
+      required: [name]
+      description: "Person entity (includes Author)"
+      aliases: [Author]
+    
+    HowTo:
+      required: [name, step]
+      description: "How-to guide with steps"
+    
+    Product:
+      required: [name, description]
+      description: "Product information"
+    
+    Event:
+      required: [name, startDate]
+      description: "Event information"
+    
+    Recipe:
+      required: [name, image]
+      description: "Recipe content"
+  
+  # Presence-only types (8 types - detect but don't check components in V1)
+  presence_only_types:
+    - Offer
+    - AggregateRating
+    - Review
+    - WebPage
+    - SoftwareApplication
+    - VideoObject
+    - LocalBusiness
+    - ImageObject
+  
+  # Types to explicitly skip/ignore
+  ignored_types:
+    - MedicalCondition
+    - MedicalTherapy
+    - Drug
+    - ClaimReview
+    - Car
+    - Speakable
+
+# Inventory status (diagnostic only, NOT part of 0-100 score)
+inventory_status:
+  none: 0          # No schema found
+  some: 1          # Some schema found
+  multiple: 2      # Multiple relevant types found
+
+# Component completeness reporting
+# Example: "Organization: 1/2 required components present — missing url"
+# This is descriptive/diagnostic, not scored
+
+# Made with Bob
