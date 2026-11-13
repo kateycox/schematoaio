@@ -35,11 +35,13 @@ geo_rules:
     weight: 14.29
     description: "Definitional sentence patterns"
     research_basis: "Cited sentences are nearly 2x as likely to define rather than describe"
+    # A definition names a subject and says what it is: "ServiceNetZero is a ...",
+    # "A hackathon is one hands-on day ...". Pronoun/filler subjects ("this is a
+    # chance", "it is the best") and bare "is" ("the call is free") don't count.
     patterns:
-      - "\\b(\\w+)\\s+is\\s+"
-      - "\\b(\\w+)\\s+refers to\\s+"
-      - "\\b(\\w+)\\s+means\\s+"
-      - "\\b(\\w+)\\s+can be defined as\\s+"
+      - '\b(?!(?:this|that|these|those|it|there|here|which|what|who|whom|he|she|they|we|you|i|one|each|everything|nothing|something|anything|and|but|or|so)\b)[a-z][\w\-]*\s+(?:is|are)\s+(?:a|an|the|one)\s+(?!(?:chance|way|time|lot|bit|must|reason|thing|good|great|big|huge|perfect|real|best|right|key|start|moment|opportunity)\b)[\w\-]+'
+      - '\b(?!(?:this|that|it|there|which|what|who|and|but|or|so)\b)[a-z][\w\-]*\s+(?:refers to|is defined as|can be defined as|stands for|is short for)\s+[\w\-]+'
+      - '\b(?!(?:this|that|it|which|what|who|and|but|or|so|also|just|really|still)\b)[a-z][\w\-]*\s+means\s+(?:a|an|the)\s+[\w\-]+'
     evaluation_criteria:
       - "Uses 'X is...' patterns"
       - "Uses 'X refers to...' patterns"

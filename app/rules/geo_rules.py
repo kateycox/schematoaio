@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timezone
 from app.rules.base_rule import BaseRule
 from app.rules.rule_registry import registry
@@ -188,10 +189,12 @@ class QuestionFormatHeadingsRule(BaseRule):
         question_words = self.config.get('question_words', 
             ['who', 'what', 'when', 'where', 'why', 'how', 'which'])
         
+        starts_with_question = re.compile(
+            r'^\s*(?:' + '|'.join(re.escape(w) for w in question_words) + r')\b', re.I
+        )
         question_headings = []
         for heading in headings:
-            text_lower = heading['text'].lower()
-            if any(text_lower.startswith(word) for word in question_words) or '?' in heading['text']:
+            if starts_with_question.match(heading['text']) or '?' in heading['text']:
                 question_headings.append(heading['text'])
         
         count = len(question_headings)
@@ -214,7 +217,18 @@ class QuestionFormatHeadingsRule(BaseRule):
             score = 0
             passed = False
             message = "No question-format headings found"
-        
+
+        dedicated_faq_url = None
+        if score < self.weight:
+            dedicated_faq_url = content_analyzer.find_dedicated_faq_page()
+            if dedicated_faq_url:
+                score = self.weight
+                passed = True
+                message = (
+                    f"Question headings live on a dedicated FAQ page ({dedicated_faq_url}). "
+                    "Section titles here don't need to be questions; scan that URL to score its headings."
+                )
+
         return self.create_result(
             score=score,
             passed=passed,
@@ -222,7 +236,8 @@ class QuestionFormatHeadingsRule(BaseRule):
             details={
                 'question_headings': count,
                 'total_headings': total_headings,
-                'examples': question_headings[:3]
+                'examples': question_headings[:3],
+                'dedicated_faq_url': dedicated_faq_url
             }
         )
 
