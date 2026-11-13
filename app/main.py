@@ -6,14 +6,13 @@ from pathlib import Path
 
 from app.api import routes
 
-# Create FastAPI app
+
 app = FastAPI(
     title="SchematoAIO",
     description="AI Search Readiness Analyzer",
-    version="1.0.0"
+    version="1.1.0",
 )
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,10 +21,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API routes
 app.include_router(routes.router)
 
-# Mount static files
 static_path = Path(__file__).parent / "static"
 if static_path.exists():
     app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
@@ -33,7 +30,6 @@ if static_path.exists():
 
 @app.get("/")
 async def root():
-    """Serve the main HTML page."""
     html_path = Path(__file__).parent / "static" / "index.html"
     if html_path.exists():
         return FileResponse(html_path)
@@ -42,11 +38,8 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
     return {
         "status": "healthy",
         "service": "SchematoAIO",
-        "version": "1.0.0"
+        "version": "1.1.0",
     }
-
-# Made with Bob

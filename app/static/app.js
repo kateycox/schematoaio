@@ -13,6 +13,8 @@ document.getElementById('urlInput').addEventListener('keypress', (e) => {
 });
 
 async function analyze() {
+    if (window.__logoSwitchTrigger) window.__logoSwitchTrigger();
+
     const urlInput = document.getElementById('urlInput');
     const url = urlInput.value.trim();
     
@@ -28,12 +30,13 @@ async function analyze() {
     document.getElementById('analyzeBtn').disabled = true;
     
     try {
-        const response = await fetch('/analyze', {
+        const selectedModel = document.getElementById('modelSelect')?.value || 'gemini';
+        const response = await fetch('/schematoaio/analyze', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ url })
+            body: JSON.stringify({ url, model: selectedModel })
         });
         
         if (!response.ok) {
@@ -126,37 +129,75 @@ function initializeTabs() {
     });
 }
 
+let _issuesOriginalNextSibling = undefined;
+function reorderIssuesSection(promoteToTop) {
+    const issues = document.querySelector('.issues-section');
+    if (!issues) return;
+    const parent = issues.parentElement;
+    if (!parent) return;
+
+    if (_issuesOriginalNextSibling === undefined) {
+        _issuesOriginalNextSibling = issues.nextElementSibling;
+    }
+
+    if (promoteToTop) {
+        const firstVisible = Array.from(parent.querySelectorAll(':scope > [data-section]')).find(
+            (el) => el !== issues && !el.classList.contains('hidden')
+        );
+        if (firstVisible && firstVisible !== issues) {
+            parent.insertBefore(issues, firstVisible);
+        }
+    } else {
+        if (_issuesOriginalNextSibling && _issuesOriginalNextSibling.parentElement === parent) {
+            parent.insertBefore(issues, _issuesOriginalNextSibling);
+        } else {
+            parent.appendChild(issues);
+        }
+    }
+}
+
 function switchTab(tabName, clickedBtn) {
     // Update active tab button
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.remove('active');
     });
     clickedBtn.classList.add('active');
-    
+
     // Show/hide sections based on tab
     const sections = document.querySelectorAll('[data-section]');
-    
+
     if (tabName === 'all') {
         // Show all sections
         sections.forEach(section => {
             section.classList.remove('hidden');
         });
     } else {
-        // Show only matching sections
+        // Each section's data-section is a space-separated list of tabs it appears on.
         sections.forEach(section => {
-            const sectionTab = section.dataset.section;
-            if (sectionTab === tabName || sectionTab === 'all') {
+            const sectionTabs = (section.dataset.section || '').split(/\s+/).filter(Boolean);
+            if (sectionTabs.includes(tabName)) {
                 section.classList.remove('hidden');
             } else {
                 section.classList.add('hidden');
             }
         });
     }
-    
+
+    // Reward: show every available recommendation when the user opens the Recommendations tab
+    if (currentData) {
+        const recsForThisTab = (tabName === 'recommendations' && currentData.all_content_recommendations?.length)
+            ? currentData.all_content_recommendations
+            : (currentData.content_recommendations || []);
+        displayContentRecs(recsForThisTab);
+    }
+
+    // On the Recommendations tab, surface Actionable Issues first.
+    reorderIssuesSection(tabName === 'recommendations');
+
     // Smooth scroll to results
-    document.getElementById('results').scrollIntoView({ 
-        behavior: 'smooth', 
-        block: 'start' 
+    document.getElementById('results').scrollIntoView({
+        behavior: 'smooth',
+        block: 'start'
     });
 }
 
@@ -952,5 +993,3 @@ document.addEventListener('DOMContentLoaded', () => {
     // Focus on URL input
     document.getElementById('urlInput').focus();
 });
-
-// Made with Bob

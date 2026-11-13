@@ -124,10 +124,11 @@ geo_rules:
       - "dt/dd structures"
       - "Accordion/collapsible sections"
       - "'Q:' or 'A:' prefixes in content"
+      - "Link to a dedicated same-site FAQ page (full credit: separate pages help AI search)"
     scoring:
       full_points: "FAQPage schema + FAQ HTML structure"
       partial_points: "FAQPage schema OR FAQ structure (not both)"
-      zero_points: "No FAQ content or schema"
+      zero_points: "No FAQ content or schema, and no link to a dedicated FAQ page"
 
 # Total possible score: 7 rules × 14.29 points ≈ 100 points
 # Each rule can award full, partial, or zero points based on criteria

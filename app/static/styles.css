@@ -25,7 +25,7 @@
     --warning: var(--google-yellow);
     --error: var(--google-red);
     --info: var(--google-blue);
-    --background: var(--gray-50);
+    --background: #FEFEFE;
     --surface: #FFFFFF;
     --text-primary: var(--gray-900);
     --text-secondary: var(--gray-700);
@@ -65,6 +65,33 @@ body {
     color: var(--gray-900);
 }
 
+.logo-switcher {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: 600px;
+    aspect-ratio: 4 / 1;
+    margin: 0 auto 20px;
+    cursor: pointer;
+    user-select: none;
+    outline: none;
+}
+
+.logo-switcher:focus-visible {
+    outline: 2px solid var(--google-blue);
+    outline-offset: 4px;
+    border-radius: 8px;
+}
+
+.logo-switcher img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    -webkit-user-drag: none;
+    will-change: transform, opacity, filter;
+}
+
 .letter-blue { color: var(--google-blue); }
 .letter-red { color: var(--google-red); }
 .letter-yellow { color: var(--google-yellow); }
@@ -78,10 +105,29 @@ body {
     padding: 60px 20px;
 }
 
+.pro-tip {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin-top: 16px;
+    margin-bottom: 0;
+    opacity: 0.85;
+}
+
 .tagline {
     font-size: 1.1rem;
     color: var(--text-secondary);
-    margin-bottom: 40px;
+    margin-top: 8px;
+    margin-bottom: 0;
+}
+
+.tagline-brand {
+    font-weight: 700;
+}
+
+.tagline-sep {
+    margin: 0 8px;
+    color: var(--text-secondary);
+    opacity: 0.6;
 }
 
 .search-bar {
@@ -146,6 +192,61 @@ body {
 #analyzeBtn:disabled {
     background: var(--gray-400);
     cursor: not-allowed;
+}
+
+/* ============================================
+   Model Selector
+   ============================================ */
+.model-selector {
+    max-width: 600px;
+    margin: 16px auto 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.model-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.model-select {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 18px;
+    padding: 8px 14px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-height: 36px;
+}
+
+.model-select:hover {
+    border-color: var(--google-blue);
+}
+
+.model-select:focus {
+    outline: none;
+    border-color: var(--google-blue);
+    box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.15);
+}
+
+.model-hint {
+    font-size: 12px;
+    color: var(--gray-600);
+    font-style: italic;
+}
+
+@media (max-width: 480px) {
+    .model-hint {
+        width: 100%;
+        text-align: center;
+    }
 }
 
 /* ============================================
@@ -1025,5 +1126,3 @@ body {
 [data-section].hidden {
     display: none;
 }
-
-/* Made with Bob */

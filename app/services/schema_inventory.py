@@ -67,11 +67,12 @@ class SchemaInventoryService:
         for script in jsonld_scripts:
             try:
                 data = json.loads(script.string)
-                # Handle both single objects and arrays
-                if isinstance(data, list):
-                    schemas.extend(data)
-                else:
-                    schemas.append(data)
+                items = data if isinstance(data, list) else [data]
+                for item in items:
+                    if isinstance(item, dict) and isinstance(item.get('@graph'), list):
+                        schemas.extend(n for n in item['@graph'] if isinstance(n, dict))
+                    elif isinstance(item, dict):
+                        schemas.append(item)
             except (json.JSONDecodeError, AttributeError):
                 continue
         
@@ -167,5 +168,3 @@ class SchemaInventoryService:
             completeness_ratio="N/A",
             status_message=status_msg
         )
-
-# Made with Bob

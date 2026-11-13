@@ -34,5 +34,3 @@ class RuleRegistry:
 
 # Global registry instance
 registry = RuleRegistry()
-
-# Made with Bob

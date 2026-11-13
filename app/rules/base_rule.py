@@ -62,5 +62,3 @@ class BaseRule(ABC):
             message=message,
             details=details
         )
-
-# Made with Bob

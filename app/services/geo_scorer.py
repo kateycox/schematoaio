@@ -15,7 +15,7 @@ class GEOScoringService:
         register_all_rules(config)
         self.rules = registry.get_all_rules()
     
-    def score(self, html: str, schemas: list) -> GEOScore:
+    def score(self, html: str, schemas: list, url: str = None) -> GEOScore:
         """
         Calculate GEO readiness score for a page.
         
@@ -27,7 +27,7 @@ class GEOScoringService:
             GEOScore with total score (0-100) and individual rule results
         """
         # Create content analyzer
-        content_analyzer = ContentAnalyzer(html)
+        content_analyzer = ContentAnalyzer(html, page_url=url)
         
         # Evaluate each rule
         results = []
@@ -43,5 +43,3 @@ class GEOScoringService:
             max_score=100.0,
             rules=results
         )
-
-# Made with Bob

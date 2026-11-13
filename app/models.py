@@ -1,10 +1,22 @@
 from pydantic import BaseModel, HttpUrl, field_validator
 from typing import List, Dict, Optional, Any
 
+from app.config import DEFAULT_TIER, MODEL_TIERS
+
 
 class AnalyzeRequest(BaseModel):
     """Request model for URL analysis."""
     url: HttpUrl
+    model: Optional[str] = DEFAULT_TIER
+
+    @field_validator('model', mode='before')
+    @classmethod
+    def validate_model(cls, v):
+        if not v:
+            return DEFAULT_TIER
+        if v not in MODEL_TIERS:
+            return DEFAULT_TIER
+        return v
 
 
 class SchemaComponent(BaseModel):
@@ -12,11 +24,10 @@ class SchemaComponent(BaseModel):
     name: str
     present: bool
     value: Optional[str] = None
-    
+
     @field_validator('present', mode='before')
     @classmethod
     def validate_present(cls, v):
-        """Convert any truthy value to boolean."""
         if isinstance(v, bool):
             return v
         if isinstance(v, str):
@@ -25,7 +36,6 @@ class SchemaComponent(BaseModel):
 
 
 class SchemaTypeInventory(BaseModel):
-    """Inventory result for a single schema type."""
     type_name: str
     found: bool
     required_components: List[SchemaComponent]
@@ -34,15 +44,13 @@ class SchemaTypeInventory(BaseModel):
 
 
 class SchemaInventory(BaseModel):
-    """Complete schema inventory for a page."""
-    status: int  # 0 (none), 1 (some), or 2 (multiple) - NOT scored
+    status: int
     types_found: List[SchemaTypeInventory]
     raw_jsonld: List[Dict[str, Any]]
-    total_count: int  # Total number of schema instances found
+    total_count: int
 
 
 class GEORuleResult(BaseModel):
-    """Result from evaluating a single GEO rule."""
     rule_name: str
     score: float
     max_score: float
@@ -52,44 +60,41 @@ class GEORuleResult(BaseModel):
 
 
 class GEOScore(BaseModel):
-    """Complete GEO scoring result (0-100)."""
-    total_score: float  # 0-100
-    max_score: float    # 100.0
+    total_score: float
+    max_score: float
     rules: List[GEORuleResult]
 
 
 class ContentFreshness(BaseModel):
-    """Content freshness status based on dateModified/datePublished."""
-    status: str  # 'Fresh', 'Aging', 'Stale', or 'Unknown'
+    status: str
     days_old: Optional[int] = None
     date_found: Optional[str] = None
-    source_field: Optional[str] = None  # 'dateModified', 'datePublished', etc.
+    source_field: Optional[str] = None
 
 
 class LlmsTxtStatus(BaseModel):
-    """Status of llms.txt file on the domain."""
-    status: str  # 'Present' or 'Missing'
-    url: str  # The llms.txt URL that was checked
-    content_length: Optional[int] = None  # Length of content if present
+    status: str
+    url: str
+    content_length: Optional[int] = None
 
 
 class Issue(BaseModel):
-    """Actionable issue identified by analysis."""
-    severity: str  # high, medium, low
+    severity: str
     title: str
     description: str
 
 
 class AnalyzeResponse(BaseModel):
-    """Complete analysis response."""
+    model_config = {"protected_namespaces": ()}
+
     url: str
     schema_inventory: SchemaInventory
     geo_score: GEOScore
-    content_freshness: ContentFreshness  # Bonus signal, separate from GEO score
-    llms_txt: LlmsTxtStatus  # Bonus signal for llms.txt detection
+    content_freshness: ContentFreshness
+    llms_txt: LlmsTxtStatus
     issues: List[Issue]
     current_jsonld: str
     improved_jsonld: str
     content_recommendations: List[str]
-
-# Made with Bob
+    all_content_recommendations: List[str] = []
+    model_used: str

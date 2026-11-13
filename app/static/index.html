@@ -10,20 +10,35 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
     
-    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="/schematoaio/static/styles.css?v=20260503c">
 </head>
 <body>
     <div class="container">
         <!-- Google-style centered search -->
         <div class="search-section">
-            <h1 class="logo">
-                Schem<span class="letter-red">a</span>t<span class="letter-yellow">o</span><span class="letter-blue">A</span>I<span class="letter-green">O</span>
-            </h1>
-            <p class="tagline">AI Search Readiness Analyzer</p>
+            <div id="logoSwitcher" class="logo-switcher" role="button" tabindex="0" aria-label="Click to change logo">
+                <img id="logoImg" alt="SchematoAIO" draggable="false" />
+            </div>
             <div class="search-bar">
                 <input type="url" id="urlInput" placeholder="Enter URL to analyze..." required>
                 <button id="analyzeBtn">Analyze</button>
             </div>
+            <div class="model-selector">
+                <label for="modelSelect" class="model-label">Model:</label>
+                <select id="modelSelect" class="model-select">
+                    <option value="gemini" selected>Gemini 2.5 Flash (Default)</option>
+                    <option value="minimax">MiniMax M2.5</option>
+                    <option value="deepseek">DeepSeek R1 0528</option>
+                    <option value="qwen3">Qwen3-235B-A22B</option>
+                </select>
+                <span class="model-hint" id="modelHint">Auto-falls back if unavailable</span>
+            </div>
+            <p class="pro-tip"><em>Pro tip: For best results, copy paste the full URL from the browser</em></p>
+            <p class="tagline">
+                <span class="tagline-brand">Schem<span class="letter-red">a</span>t<span class="letter-yellow">o</span><span class="letter-blue">A</span>I<span class="letter-green">O</span></span>
+                <span class="tagline-sep">|</span>
+                AI Search Readiness Analyzer
+            </p>
             <div id="loading" class="loading-overlay" style="display: none;">
                 <div class="spinner"></div>
                 <p>Analyzing page...</p>
@@ -68,14 +83,14 @@
             </section>
             
             <!-- Content Freshness Section (Bonus Signal) -->
-            <section class="card freshness-section" data-section="all">
+            <section class="card freshness-section" data-section="recommendations">
                 <h2>🕒 Content Freshness</h2>
                 <p class="section-description">Bonus signal - separate from GEO score</p>
                 <div id="freshnessDisplay" class="freshness-display"></div>
             </section>
             
             <!-- llms.txt Detection Section (Bonus Signal) -->
-            <section class="card llmstxt-section" data-section="all">
+            <section class="card llmstxt-section" data-section="recommendations">
                 <h2>🤖 llms.txt Detection</h2>
                 <p class="section-description">Bonus signal - helps AI crawlers discover your content</p>
                 <div id="llmsTxtDisplay" class="llmstxt-display"></div>
@@ -92,7 +107,7 @@
             </section>
             
             <!-- Actionable Issues -->
-            <section class="card issues-section" data-section="all">
+            <section class="card issues-section" data-section="recommendations">
                 <h2>⚠️ Actionable Issues</h2>
                 <div id="issuesList" class="issues-list"></div>
             </section>
@@ -105,7 +120,7 @@
             </section>
             
             <!-- Schema Comparison -->
-            <section class="card schema-comparison-section" data-section="all">
+            <section class="card schema-comparison-section" data-section="schema">
                 <h2>🔄 Schema Comparison</h2>
                 <div class="comparison-grid">
                     <div class="json-panel">
@@ -130,6 +145,7 @@
         </div>
     </div>
     
-    <script src="/static/app.js"></script>
+    <script src="/schematoaio/static/logo-switcher.js?v=20260503c"></script>
+    <script src="/schematoaio/static/app.js?v=20260503h"></script>
 </body>
 </html>

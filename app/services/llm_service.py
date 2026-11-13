@@ -1,51 +1,162 @@
-"""LLM service for generating AI-powered recommendations using Google Gemini."""
-from typing import List
+"""LLM service that routes requests through the Zo /zo/ask API.
+
+Supports per-request model selection and automatic fallback to other
+configured tiers if the chosen model fails.
+"""
+from typing import List, Optional
 import random
-from app.config import get_settings
+import httpx
+
+from app.config import get_settings, MODEL_TIERS, DEFAULT_TIER, FALLBACK_ORDER
 from app.models import SchemaInventory, GEOScore, Issue
 
-try:
-    import google.generativeai as genai
-    GEMINI_AVAILABLE = True
-except ImportError:
-    GEMINI_AVAILABLE = False
+
+ZO_ASK_URL = "https://api.zo.computer/zo/ask"
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
+
+class LLMOutOfCredits(Exception):
+    """Raised when every available model has refused for credit/quota reasons."""
+    pass
+
+
+def _looks_like_credit_error(status_code: Optional[int], body: str) -> bool:
+    if status_code in (402, 429):
+        return True
+    needles = ("quota", "insufficient", "credit", "exhaust", "billing", "payment")
+    lowered = body.lower()
+    return any(n in lowered for n in needles)
 
 
 class LLMService:
-    """Service for generating recommendations using Google Gemini."""
-    
+    """Generates schema improvements, content recs, and issues.
+
+    Routes per-tier: Gemini tier hits Google's Gemini API directly;
+    other tiers hit Zo /ask (which fans out to OpenRouter BYOK).
+    """
+
     def __init__(self):
-        """Initialize the LLM service with Google Gemini."""
         self.settings = get_settings()
-        self.model = None
-        
-        if GEMINI_AVAILABLE and self.settings.gemini_api_key:
-            try:
-                genai.configure(api_key=self.settings.gemini_api_key)
-                self.model = genai.GenerativeModel('gemini-1.5-flash')
-                print("✅ Google Gemini initialized successfully with gemini-1.5-flash")
-            except Exception as e:
-                print(f"⚠️ Failed to initialize Gemini: {e}")
-                self.model = None
-        else:
-            print("⚠️ Gemini not available, using fallback recommendations")
-    
+        self.zo_api_key = self.settings.zo_api_key
+        self.gemini_api_key = self.settings.gemini_api_key
+
+    def _call_gemini(self, prompt: str, model_id: str) -> tuple[Optional[str], bool]:
+        """Returns (output, credits_exhausted)."""
+        if not self.gemini_api_key:
+            print("⚠️ GEMINI_API_KEY not configured; cannot call Gemini directly")
+            return None, False
+        try:
+            with httpx.Client(timeout=90.0) as client:
+                resp = client.post(
+                    GEMINI_API_URL.format(model=model_id),
+                    params={"key": self.gemini_api_key},
+                    headers={"content-type": "application/json"},
+                    json={"contents": [{"parts": [{"text": prompt}]}]},
+                )
+                if resp.status_code >= 400:
+                    body = resp.text or ""
+                    print(f"⚠️ Gemini {resp.status_code}: {body[:200]}")
+                    return None, _looks_like_credit_error(resp.status_code, body)
+                data = resp.json()
+                candidates = data.get("candidates") or []
+                if not candidates:
+                    print(f"⚠️ Gemini returned no candidates: {data}")
+                    return None, False
+                parts = candidates[0].get("content", {}).get("parts") or []
+                text = "".join(p.get("text", "") for p in parts).strip()
+                if text:
+                    print(f"✅ Gemini ({model_id}) returned {len(text)} chars")
+                    return text, False
+                print("⚠️ Gemini returned empty text")
+                return None, False
+        except Exception as e:
+            print(f"⚠️ Gemini call failed: {e}")
+            return None, False
+
+    def _call_zo_ask(self, prompt: str, model_id: str) -> tuple[Optional[str], bool]:
+        """Returns (output, credits_exhausted)."""
+        if not self.zo_api_key:
+            print("⚠️ ZO_API_KEY not configured; cannot call Zo /ask")
+            return None, False
+        try:
+            with httpx.Client(timeout=90.0) as client:
+                resp = client.post(
+                    ZO_ASK_URL,
+                    headers={
+                        "authorization": f"Bearer {self.zo_api_key}",
+                        "content-type": "application/json",
+                        "accept": "application/json",
+                    },
+                    json={"input": prompt, "model_name": model_id},
+                )
+                if resp.status_code >= 400:
+                    body = resp.text or ""
+                    print(f"⚠️ Zo /ask {resp.status_code}: {body[:200]}")
+                    return None, _looks_like_credit_error(resp.status_code, body)
+                data = resp.json()
+                output = data.get("output")
+                if isinstance(output, str) and output.strip():
+                    print(f"✅ Zo /ask ({model_id}) returned {len(output)} chars")
+                    return output, False
+                print(f"⚠️ Zo /ask ({model_id}) returned empty output")
+                return None, False
+        except Exception as e:
+            print(f"⚠️ Zo /ask ({model_id}) failed: {e}")
+            return None, False
+
+    def _call_zo(self, prompt: str, tier: str) -> Optional[str]:
+        """Try the requested tier, then fall back through the rest.
+
+        Raises LLMOutOfCredits when every attempted tier failed and at
+        least one of those failures looked like a credit/quota error.
+        """
+        if tier not in MODEL_TIERS:
+            tier = DEFAULT_TIER
+
+        attempt_order = [tier] + [t for t in FALLBACK_ORDER if t != tier]
+
+        any_credit_error = False
+        for current in attempt_order:
+            spec = MODEL_TIERS[current]
+            model_id = spec["id"]
+            provider = spec.get("provider", "zo")
+            if not model_id:
+                continue
+
+            if provider == "gemini":
+                output, credits_exhausted = self._call_gemini(prompt, model_id)
+            else:
+                output, credits_exhausted = self._call_zo_ask(prompt, model_id)
+
+            if output:
+                if current != tier:
+                    print(f"⚠️ Tier '{tier}' failed; succeeded with '{current}'")
+                return output
+
+            if credits_exhausted:
+                any_credit_error = True
+
+        print("❌ All configured tiers failed")
+        if any_credit_error:
+            raise LLMOutOfCredits(
+                "Yikes, looks like we're out of credits. Try choosing another LLM model, if that doesn't work come back again later."
+            )
+        return None
+
     def generate_schema_improvements(
         self,
         inventory: SchemaInventory,
-        url: str
+        url: str,
+        tier: str = DEFAULT_TIER,
     ) -> List[str]:
-        """Generate improved JSON-LD schema markup or recommendations."""
-        if not self.model:
-            print("🔄 Using fallback for schema improvements (no model)")
-            return self._fallback_schema_improvements(inventory)
-        
-        try:
-            current_schemas = ', '.join([t.type_name for t in inventory.types_found if t.found]) if inventory.types_found else 'None'
-            
-            # Different prompt based on whether schema exists
-            if inventory.total_count == 0:
-                prompt = f"""This webpage has NO structured data (JSON-LD schema markup).
+        current_schemas = (
+            ", ".join([t.type_name for t in inventory.types_found if t.found])
+            if inventory.types_found
+            else "None"
+        )
+
+        if inventory.total_count == 0:
+            prompt = f"""This webpage has NO structured data (JSON-LD schema markup).
 
 URL: {url}
 
@@ -56,8 +167,8 @@ Provide a beginner-friendly explanation that:
 4. Keeps the tone helpful and educational, not technical
 
 Format as plain text with clear sections. Do NOT include actual JSON-LD code."""
-            else:
-                prompt = f"""Generate improved JSON-LD schema markup for this website. Return ONLY valid JSON-LD code, not text descriptions.
+        else:
+            prompt = f"""Generate improved JSON-LD schema markup for this website. Return ONLY valid JSON-LD code, not text descriptions.
 
 URL: {url}
 Current Schema Types: {current_schemas}
@@ -71,24 +182,18 @@ Generate complete, valid JSON-LD markup that includes:
 
 Return ONLY the JSON-LD code wrapped in <script type="application/ld+json"> tags. Make it production-ready and valid according to schema.org standards."""
 
-            print(f"🤖 Calling Gemini for schema improvements (URL: {url[:50]}..., Schemas: {inventory.total_count})")
-            response = self.model.generate_content(prompt)
-            result = response.text.strip()
-            print(f"✅ Gemini returned schema improvements ({len(result)} chars)")
+        result = self._call_zo(prompt, tier)
+        if result:
             return [result]
-        
-        except Exception as e:
-            print(f"⚠️ Gemini error in schema improvements: {e}")
-            print("🔄 Using fallback for schema improvements")
-            return self._fallback_schema_improvements(inventory)
-    
+        return self._fallback_schema_improvements(inventory)
+
     def generate_content_recommendations(
         self,
         geo_score: GEOScore,
-        url: str
+        url: str,
+        tier: str = DEFAULT_TIER,
+        limit: Optional[int] = 3,
     ) -> List[str]:
-        """Generate rule-based content optimization recommendations."""
-        # Define recommendation options for each rule type
         recommendation_map = {
             'answer_first_content': [
                 'Lead with a direct answer in your first 200 words. Content that clearly summarizes answers upfront is 33% more likely to be cited by AI systems. Use patterns like [Topic] is... or [Topic] refers to... in your opening paragraph.',
@@ -115,47 +220,36 @@ Return ONLY the JSON-LD code wrapped in <script type="application/ld+json"> tags
                 'Add a Last Updated date visible on the page and in your schema markup. AI systems deprioritize stale content — even small updates with a current timestamp signal freshness.'
             ],
             'faq_content_blocks': [
-                'Add a FAQ section with 3-5 questions your audience commonly asks. Structure each as a clear question followed by a concise 2-3 sentence answer. This directly matches the extraction patterns AI search engines use.',
-                'Create a Q&A section at the bottom of your page addressing common objections or questions. Use a clear question-then-answer format — this is the exact structure AI systems look for when extracting FAQ content.'
+                'Give your FAQ its own page (for example /faq) and link to it from your navigation and footer. AI answer engines retrieve and cite individual pages, so a page that is only questions and answers, with FAQPage schema, matches question queries more cleanly than a block tucked under other content.',
+                'Create a dedicated FAQ page with 5-10 questions your audience actually asks, each a visible question heading followed by a 2-3 sentence answer, and add matching FAQPage schema. Separate, focused pages help AI search; you do not need to cram everything onto one page.'
             ]
         }
-        
-        # Filter rules that scored below 50% (score < max_score * 0.5)
-        low_scoring_rules = [
-            r for r in geo_score.rules
-            if r.score < (r.max_score * 0.5)
-        ]
-        
-        # Sort by score (lowest first) to prioritize worst-performing rules
-        low_scoring_rules.sort(key=lambda r: r.score)
-        
-        # Generate recommendations for up to 3 rules
+
+        if limit is None:
+            candidate_rules = [r for r in geo_score.rules if not r.passed or r.score < r.max_score]
+        else:
+            candidate_rules = [r for r in geo_score.rules if r.score < (r.max_score * 0.5)]
+
+        candidate_rules.sort(key=lambda r: r.score)
+        if limit is not None:
+            candidate_rules = candidate_rules[:limit]
+
         recommendations = []
-        for rule in low_scoring_rules[:3]:
-            # Check if we have recommendations for this rule
+        for rule in candidate_rules:
             if rule.rule_name in recommendation_map:
-                # Randomly pick one of the two options
                 options = recommendation_map[rule.rule_name]
-                selected_recommendation = random.choice(options)
-                recommendations.append(selected_recommendation)
-        
-        print(f"📋 Generated {len(recommendations)} rule-based content recommendations (from {len(low_scoring_rules)} low-scoring rules)")
-        
+                recommendations.append(random.choice(options))
+
         return recommendations
-    
+
     def generate_issues(
         self,
         inventory: SchemaInventory,
-        geo_score: GEOScore
+        geo_score: GEOScore,
+        tier: str = DEFAULT_TIER,
     ) -> List[Issue]:
-        """Generate critical issues found during analysis."""
-        if not self.model:
-            print("🔄 Using fallback for issues (no model)")
-            return self._fallback_issues(inventory, geo_score)
-        
-        try:
-            failed_rules = [r for r in geo_score.rules if not r.passed]
-            prompt = f"""Identify 2-3 critical issues affecting this website's AI search readiness based on the failed GEO rules below.
+        failed_rules = [r for r in geo_score.rules if not r.passed]
+        prompt = f"""Identify 2-3 critical issues affecting this website's AI search readiness based on the failed GEO rules below.
 
 Schema Count: {inventory.total_count}
 Schema Types: {', '.join([t.type_name for t in inventory.types_found if t.found]) if inventory.types_found else 'None'}
@@ -164,7 +258,7 @@ GEO Score: {geo_score.total_score}/100
 Failed GEO Rules:
 {chr(10).join([f"- {r.rule_name}: {r.message}" for r in failed_rules])}
 
-Generate SPECIFIC, ACTIONABLE issues based on these failed rules. Reference these research-backed statistics when relevant:
+Generate SPECIFIC, ACTIONABLE issues based on these failed rules. Do NOT recommend merging or consolidating content (FAQ, About, services) onto a single page: AI search engines retrieve and cite individual URLs, so dedicated pages for distinct topics help visibility. This tool scores one URL at a time, so content on other pages of the site is not counted here. Reference these research-backed statistics when relevant:
 - Answer-first content is 33% more likely to be cited by AI systems
 - Definitional phrasing is 2x more likely to be cited by AI systems
 - Quotable chunks increase AI visibility by 30%
@@ -177,53 +271,37 @@ DESCRIPTION: [One sentence description with specific actionable advice]
 
 Separate each issue with "---"."""
 
-            print(f"🤖 Calling Gemini for issues (Score: {geo_score.total_score}/100, Failed rules: {len(failed_rules)})")
-            response = self.model.generate_content(prompt)
-            issues_text = response.text.strip()
-            print(f"✅ Gemini returned issues response ({len(issues_text)} chars)")
-            
-            issues = []
-            issue_blocks = issues_text.split('---')
-            
-            for block in issue_blocks[:3]:
-                lines = [l.strip() for l in block.strip().split('\n') if l.strip()]
-                if len(lines) >= 3:
-                    severity = "warning"
-                    title = "Issue"
-                    description = ""
-                    
-                    for line in lines:
-                        if line.startswith('SEVERITY:'):
-                            severity = line.split(':', 1)[1].strip().lower()
-                        elif line.startswith('TITLE:'):
-                            title = line.split(':', 1)[1].strip()
-                        elif line.startswith('DESCRIPTION:'):
-                            description = line.split(':', 1)[1].strip()
-                    
-                    if title and description:
-                        issues.append(Issue(
-                            severity=severity if severity in ['critical', 'warning', 'info'] else 'warning',
-                            title=title,
-                            description=description
-                        ))
-            
-            if issues:
-                print(f"✅ Parsed {len(issues)} issues from Gemini response")
-                return issues
-            else:
-                print("⚠️ No issues parsed from Gemini response, using fallback")
-                return self._fallback_issues(inventory, geo_score)
-        
-        except Exception as e:
-            print(f"⚠️ Gemini error in issues generation: {e}")
-            print("🔄 Using fallback for issues")
+        issues_text = self._call_zo(prompt, tier)
+        if not issues_text:
             return self._fallback_issues(inventory, geo_score)
-    
+
+        issues = []
+        for block in issues_text.split('---')[:3]:
+            lines = [l.strip() for l in block.strip().split('\n') if l.strip()]
+            if len(lines) < 3:
+                continue
+            severity = "warning"
+            title = "Issue"
+            description = ""
+            for line in lines:
+                if line.startswith('SEVERITY:'):
+                    severity = line.split(':', 1)[1].strip().lower()
+                elif line.startswith('TITLE:'):
+                    title = line.split(':', 1)[1].strip()
+                elif line.startswith('DESCRIPTION:'):
+                    description = line.split(':', 1)[1].strip()
+            if title and description:
+                issues.append(Issue(
+                    severity=severity if severity in ['critical', 'warning', 'info'] else 'warning',
+                    title=title,
+                    description=description,
+                ))
+
+        return issues if issues else self._fallback_issues(inventory, geo_score)
+
     def _fallback_schema_improvements(self, inventory: SchemaInventory) -> List[str]:
-        """Fallback schema recommendations when LLM is unavailable."""
-        # Return beginner-friendly explanation when no schema exists
         if inventory.total_count == 0:
-            explanation = """No structured data was found on this page. Structured data (JSON-LD) helps AI search engines understand your content.
+            return ["""No structured data was found on this page. Structured data (JSON-LD) helps AI search engines understand your content.
 
 Here are the recommended schema types to add for this page:
 
@@ -236,11 +314,9 @@ Here are the recommended schema types to add for this page:
 3. **Article or WebPage Schema** - Describes your content
    - Add headline, author, publication date, and description
 
-To implement, add a <script type="application/ld+json"> tag in your page's <head> section with the appropriate schema markup."""
-            return [explanation]
-        else:
-            # If schema exists, provide improvement suggestions
-            suggestions = f"""Found {inventory.total_count} schema(s) on this page. Here are suggestions to enhance them:
+To implement, add a <script type="application/ld+json"> tag in your page's <head> section with the appropriate schema markup."""]
+
+        return [f"""Found {inventory.total_count} schema(s) on this page. Here are suggestions to enhance them:
 
 1. **Add Missing Properties** - Enrich existing schemas with more detailed information
    - Include author credentials, publication dates, and images
@@ -251,63 +327,36 @@ To implement, add a <script type="application/ld+json"> tag in your page's <head
    - HowTo for instructional content
 
 3. **Validate Your Markup** - Use Google's Rich Results Test to ensure proper implementation
-   - Fix any validation errors or warnings"""
-            return [suggestions]
-    
-    def _fallback_content_recommendations(self, geo_score: GEOScore) -> List[str]:
-        """Fallback content recommendations when LLM is unavailable."""
-        recommendations = []
-        failed_rules = [r for r in geo_score.rules if not r.passed]
-        
-        if len(failed_rules) > 3:
-            recommendations.append("Improve content quality by addressing multiple GEO rule failures")
-            recommendations.append("Add clear author information and credentials")
-            recommendations.append("Include publication dates and last updated timestamps")
-        elif len(failed_rules) > 0:
-            for rule in failed_rules[:2]:
-                recommendations.append(f"Fix: {rule.message}")
-        else:
-            recommendations.append("Maintain high content quality standards")
-            recommendations.append("Regularly update content to keep it fresh")
-        
-        recommendations.append("Add more multimedia content (images, videos)")
-        recommendations.append("Improve internal linking structure")
-        
-        return recommendations[:5]
-    
+   - Fix any validation errors or warnings"""]
+
     def _fallback_issues(self, inventory: SchemaInventory, geo_score: GEOScore) -> List[Issue]:
-        """Fallback issues when LLM is unavailable."""
         issues = []
-        
         if inventory.total_count == 0:
             issues.append(Issue(
                 severity="critical",
                 title="No Schema Markup Found",
-                description="Page lacks structured data, making it harder for AI to understand content"
+                description="Page lacks structured data, making it harder for AI to understand content",
             ))
-        
         if geo_score.total_score < 50:
             issues.append(Issue(
                 severity="critical",
                 title="Low GEO Score",
-                description=f"Score of {geo_score.total_score}/100 indicates poor AI search readiness"
+                description=f"Score of {geo_score.total_score}/100 indicates poor AI search readiness",
             ))
         elif geo_score.total_score < 70:
             issues.append(Issue(
                 severity="warning",
                 title="Moderate GEO Score",
-                description=f"Score of {geo_score.total_score}/100 has room for improvement"
+                description=f"Score of {geo_score.total_score}/100 has room for improvement",
             ))
-        
-        failed_critical = [r for r in geo_score.rules if not r.passed and r.rule_name in ['has_title', 'has_meta_description']]
+        failed_critical = [
+            r for r in geo_score.rules
+            if not r.passed and r.rule_name in ['has_title', 'has_meta_description']
+        ]
         if failed_critical:
             issues.append(Issue(
                 severity="critical",
                 title="Missing Critical Metadata",
-                description="Page lacks essential title or meta description tags"
+                description="Page lacks essential title or meta description tags",
             ))
-        
         return issues[:3]
-
-
-# Made with Bob

@@ -2,13 +2,15 @@ from bs4 import BeautifulSoup
 from typing import List, Dict, Optional
 import re
 from datetime import datetime
+from urllib.parse import urljoin, urlparse
 
 
 class ContentAnalyzer:
     """Analyzes HTML content for GEO readiness signals."""
     
-    def __init__(self, html: str):
-        """Initialize with HTML content."""
+    def __init__(self, html: str, page_url: Optional[str] = None):
+        """Initialize with HTML content and (optionally) the page's URL."""
+        self.page_url = page_url
         self.soup = BeautifulSoup(html, 'lxml')
         self.text = self.soup.get_text(separator=' ', strip=True)
     
@@ -119,6 +121,34 @@ class ContentAnalyzer:
         
         return None
     
+    def find_dedicated_faq_page(self) -> Optional[str]:
+        """Return the URL of a same-site FAQ page this page links to, if any.
+
+        A dedicated FAQ page is the stronger setup for AI search: answer engines
+        retrieve and cite individual URLs, so a page that is only Q&A (with its
+        own title, headings and FAQPage schema) matches question queries more
+        cleanly than a FAQ block appended to another page.
+        """
+        if not self.page_url:
+            return None
+        base = urlparse(self.page_url)
+        current = base.path.rstrip('/') or '/'
+        text_pattern = re.compile(r'^\s*(faqs?|frequently asked questions|questions)\s*$', re.I)
+        for a in self.soup.find_all('a', href=True):
+            href = a['href'].strip()
+            if href.startswith(('mailto:', 'tel:', 'javascript:')):
+                continue
+            target = urlparse(urljoin(self.page_url, href))
+            if target.netloc and target.netloc.lower().removeprefix('www.') != base.netloc.lower().removeprefix('www.'):
+                continue
+            path = target.path.rstrip('/') or '/'
+            if path == current:
+                continue
+            last_segment = path.rsplit('/', 1)[-1].lower()
+            if re.fullmatch(r'faqs?(\.html?)?|frequently-asked-questions', last_segment) or text_pattern.match(a.get_text(' ', strip=True)):
+                return target._replace(fragment='', query='').geturl()
+        return None
+
     def has_faq_structure(self) -> bool:
         """Check if the page has FAQ-style structure."""
         # Check for FAQ schema
@@ -154,5 +184,3 @@ class ContentAnalyzer:
         
         total_words = sum(len(p.split()) for p in paragraphs)
         return total_words / len(paragraphs)
-
-# Made with Bob

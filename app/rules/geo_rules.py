@@ -282,6 +282,7 @@ class FAQContentBlocksRule(BaseRule):
     
     def evaluate(self, content_analyzer, schemas: list) -> GEORuleResult:
         has_faq = content_analyzer.has_faq_structure()
+        dedicated_faq_url = None
         
         # Check for FAQ schema
         has_faq_schema = any(
@@ -298,9 +299,18 @@ class FAQContentBlocksRule(BaseRule):
             passed = True
             message = "FAQ-style content detected (no schema)"
         else:
-            score = 0
-            passed = False
-            message = "No FAQ content found"
+            dedicated_faq_url = content_analyzer.find_dedicated_faq_page()
+            if dedicated_faq_url:
+                score = self.weight
+                passed = True
+                message = (
+                    f"FAQ lives on its own page ({dedicated_faq_url}). That's the stronger setup "
+                    "for AI search; scan that URL to score its Q&A content."
+                )
+            else:
+                score = 0
+                passed = False
+                message = "No FAQ content found on this page and no link to a dedicated FAQ page"
         
         return self.create_result(
             score=score,
@@ -308,7 +318,8 @@ class FAQContentBlocksRule(BaseRule):
             message=message,
             details={
                 'has_faq_structure': has_faq,
-                'has_faq_schema': has_faq_schema
+                'has_faq_schema': has_faq_schema,
+                'dedicated_faq_url': dedicated_faq_url
             }
         )
 
@@ -345,5 +356,3 @@ def register_all_rules(config: dict) -> None:
             config=rule_config
         )
         registry.register(rule)
-
-# Made with Bob
